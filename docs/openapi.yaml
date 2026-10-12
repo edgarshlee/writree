@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: Writree Sync API
+  version: 0.1.0
+  description: Optional authentication, workspace sync, and immutable revision API.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/auth/exchange:
+    post:
+      summary: Exchange a single-use desktop login code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExchangeRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/TokenPair'}
+        '401': {$ref: '#/components/responses/Error'}
+  /api/v1/auth/refresh:
+    post:
+      summary: Rotate a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefreshRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/TokenPair'}
+        '401': {$ref: '#/components/responses/Error'}
+  /api/v1/auth/session:
+    delete:
+      summary: Revoke a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefreshRequest'}
+      responses:
+        '204': {description: Revoked or already absent}
+  /api/v1/me:
+    get:
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Error'}
+  /api/v1/workspaces:
+    get:
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Owned workspaces
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Workspace'}}
+    post:
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, maxLength: 255}
+      responses:
+        '201':
+          description: Workspace created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Workspace'}
+  /api/v1/workspaces/{workspaceId}:
+    delete:
+      summary: Unlink and delete a remote workspace
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/WorkspaceId'}
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v1/workspaces/{workspaceId}/sync:
+    post:
+      summary: Push local changes and pull remote changes after a cursor
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/WorkspaceId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SyncRequest'}
+      responses:
+        '200':
+          description: Accepted changes, remote changes, and non-destructive conflicts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SyncResult'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/v1/documents/{documentId}/revisions:
+    get:
+      summary: List retained revisions newest first
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/DocumentId'}
+      responses:
+        '200':
+          description: Revision history
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/RevisionDetail'}}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/v1/documents/{documentId}/revisions/{revisionId}/restore:
+    post:
+      summary: Restore a retained revision as a new revision
+      security: [{bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/DocumentId'}
+        - in: path
+          name: revisionId
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: New restored revision
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Revision'}
+        '404': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    WorkspaceId:
+      in: path
+      name: workspaceId
+      required: true
+      schema: {type: string, format: uuid}
+    DocumentId:
+      in: path
+      name: documentId
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    TokenPair:
+      description: Access token and rotating refresh token
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/TokenPair'}
+    Error:
+      description: Structured API error
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+  schemas:
+    ExchangeRequest:
+      type: object
+      required: [code, deviceId, deviceName]
+      properties:
+        code: {type: string}
+        deviceId: {type: string, maxLength: 255}
+        deviceName: {type: string, maxLength: 255}
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: {type: string}
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken: {type: string}
+        refreshToken: {type: string}
+        expiresIn: {type: integer, format: int64}
+    User:
+      type: object
+      required: [id, githubLogin]
+      properties:
+        id: {type: string, format: uuid}
+        githubLogin: {type: string}
+        displayName: {type: [string, 'null']}
+        avatarUrl: {type: [string, 'null'], format: uri}
+    Workspace:
+      type: object
+      required: [id, name, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        updatedAt: {type: string, format: date-time}
+    DocumentChange:
+      type: object
+      required: [relativePath, contentHash, deleted, clientUpdatedAt]
+      properties:
+        relativePath: {type: string, maxLength: 1024}
+        content: {type: [string, 'null']}
+        contentHash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        baseRevision: {type: [integer, 'null']}
+        deleted: {type: boolean}
+        clientUpdatedAt: {type: string, format: date-time}
+    SyncRequest:
+      type: object
+      required: [deviceId, changes]
+      properties:
+        deviceId: {type: string, maxLength: 255}
+        cursor: {type: [integer, 'null'], format: int64}
+        changes:
+          type: array
+          maxItems: 500
+          items: {$ref: '#/components/schemas/DocumentChange'}
+    Revision:
+      type: object
+      required: [id, documentId, relativePath, revision, contentHash, deleted, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        documentId: {type: string, format: uuid}
+        relativePath: {type: string}
+        revision: {type: integer}
+        contentHash: {type: string}
+        deleted: {type: boolean}
+        createdAt: {type: string, format: date-time}
+    RevisionDetail:
+      type: object
+      required: [id, revision, contentHash, deleted, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        revision: {type: integer}
+        contentHash: {type: string}
+        deleted: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        content: {type: [string, 'null']}
+    Conflict:
+      type: object
+      required: [relativePath, localHash, remoteRevision, remoteDeleted]
+      properties:
+        relativePath: {type: string}
+        localHash: {type: string}
+        remoteRevision: {type: integer}
+        remoteContent: {type: [string, 'null']}
+        remoteDeleted: {type: boolean}
+    SyncResult:
+      type: object
+      required: [cursor, accepted, remoteChanges, conflicts]
+      properties:
+        cursor: {type: integer, format: int64}
+        accepted: {type: array, items: {$ref: '#/components/schemas/Revision'}}
+        remoteChanges: {type: array, items: {$ref: '#/components/schemas/DocumentChange'}}
+        conflicts: {type: array, items: {$ref: '#/components/schemas/Conflict'}}
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field: {type: string}
+        message: {type: string}
+    ApiError:
+      type: object
+      required: [code, message, traceId, fieldErrors]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        traceId: {type: string}
+        fieldErrors: {type: array, items: {$ref: '#/components/schemas/FieldError'}}
