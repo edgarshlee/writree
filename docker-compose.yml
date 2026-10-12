@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-writree}
+      POSTGRES_USER: ${POSTGRES_USER:-writree}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-writree-local-only}
+    volumes:
+      - writree-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-writree} -d ${POSTGRES_DB:-writree}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/server
+    environment:
+      WRITREE_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-writree}
+      POSTGRES_USER: ${POSTGRES_USER:-writree}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-writree-local-only}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-local-client-not-configured}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-local-secret-not-configured}
+      WRITREE_JWT_SECRET: ${WRITREE_JWT_SECRET:-local-development-secret-change-me-please}
+      WRITREE_DESKTOP_REDIRECT: ${WRITREE_DESKTOP_REDIRECT:-writree://auth/callback}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  writree-postgres:

@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: writree-server
+  datasource:
+    url: ${WRITREE_DATABASE_URL:jdbc:postgresql://localhost:5432/writree}
+    username: ${POSTGRES_USER:writree}
+    password: ${POSTGRES_PASSWORD:writree-local-only}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID:local-client-not-configured}
+            client-secret: ${GITHUB_CLIENT_SECRET:local-secret-not-configured}
+            scope: read:user
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+writree:
+  auth:
+    jwt-secret: ${WRITREE_JWT_SECRET:local-development-secret-change-me-please}
+    desktop-redirect: ${WRITREE_DESKTOP_REDIRECT:writree://auth/callback}
+    access-token-minutes: 15
+    refresh-token-days: 30
+    login-code-seconds: 120
+  sync:
+    max-document-bytes: 5242880
+    revision-retention: 100
+    tombstone-days: 30
+
