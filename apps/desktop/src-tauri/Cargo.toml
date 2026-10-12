@@ -1,0 +1,37 @@
+[package]
+name = "writree"
+version = "0.1.0"
+description = "Local-first Markdown and Git editor"
+authors = ["Writree contributors"]
+edition = "2021"
+
+[lib]
+name = "writree_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dunce = "1"
+keyring = { version = "3", features = ["windows-native"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile = "3"
+

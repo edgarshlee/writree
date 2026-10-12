@@ -1,0 +1,15 @@
+{
+  "name": "writree",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "dev": "pnpm --filter @writree/desktop dev",
+    "tauri": "pnpm --filter @writree/desktop tauri",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "server:test": "apps/server/mvnw.cmd -f apps/server/pom.xml test"
+  }
+}

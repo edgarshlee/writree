@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Writree",
+  "version": "0.1.0",
+  "identifier": "io.github.writree.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Writree",
+        "width": 1320,
+        "height": 840,
+        "minWidth": 760,
+        "minHeight": 540,
+        "center": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: https: data: blob:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost http://localhost:8080 https:; font-src 'self' data:"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["writree"]
+      }
+    },
+    "sql": {
+      "preload": ["sqlite:writree.db"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "description": "Markdown document",
+        "role": "Editor"
+      }
+    ]
+  }
+}
