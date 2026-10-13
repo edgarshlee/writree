@@ -1,6 +1,6 @@
 [package]
 name = "writree"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first Markdown and Git editor"
 authors = ["Writree contributors"]
 edition = "2021"

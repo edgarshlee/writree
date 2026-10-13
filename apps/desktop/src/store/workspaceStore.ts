@@ -25,6 +25,7 @@ interface WorkspaceState {
   commitMessage: string
   openDemo(): Promise<void>
   chooseWorkspace(): Promise<void>
+  createDocument(): Promise<void>
   openDocument(path: string): Promise<void>
   closeDocument(path: string): void
   setActive(path: string): void
@@ -106,6 +107,46 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       await hydrateWorkspace(snapshot, set)
       const first = findFirstMarkdown(snapshot.files)
       if (first) await get().openDocument(first)
+      await get().refreshGit()
+    } catch (error) {
+      set({ message: userMessage(error) })
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  async createDocument() {
+    const state = get()
+    if (!state.workspace) {
+      set({ message: '먼저 워크스페이스 폴더를 열어주세요.' })
+      return
+    }
+    const input = window.prompt('새 Markdown 파일 이름 또는 상대 경로를 입력하세요.', '새 문서.md')
+    if (input === null) return
+    const relativePath = input.trim()
+    if (!relativePath) {
+      set({ message: '파일 이름을 입력하세요.' })
+      return
+    }
+    set({ loading: true })
+    try {
+      const created = await bridge.createDocument(state.workspace.rootPath, relativePath)
+      const workspace = await bridge.openWorkspace(state.workspace.rootPath)
+      const path = created.relativePath
+      const document: OpenDocument = {
+        ...created,
+        title: titleFromPath(path),
+        savedMarkdown: created.markdown,
+        saveState: 'saved',
+      }
+      set((current) => ({
+        workspace,
+        documents: { ...current.documents, [path]: document },
+        tabs: current.tabs.includes(path) ? current.tabs : [...current.tabs, path],
+        activePath: path,
+        mode: 'wysiwyg',
+        message: `${path} 파일을 만들었습니다.`,
+      }))
       await get().refreshGit()
     } catch (error) {
       set({ message: userMessage(error) })

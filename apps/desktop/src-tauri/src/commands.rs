@@ -120,6 +120,38 @@ pub fn open_workspace(root_path: String) -> Result<WorkspaceSnapshot, String> {
 }
 
 #[tauri::command]
+pub fn create_document(
+    root_path: String,
+    relative_path: String,
+) -> Result<DocumentSnapshot, String> {
+    let root = canonical_directory(&root_path)?;
+    let relative = markdown_relative_path(&relative_path)?;
+    let path = workspace_destination(&root, &relative)?;
+    ensure_markdown(&path)?;
+    if path.exists() {
+        return Err("같은 이름의 파일이 이미 있습니다.".into());
+    }
+
+    let title = path
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("새 문서");
+    let markdown = format!("# {title}\n\n");
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(io_error("새 문서를 만들지 못했습니다"))?;
+    file.write_all(markdown.as_bytes())
+        .map_err(io_error("새 문서를 쓰지 못했습니다"))?;
+    file.sync_all()
+        .map_err(io_error("새 문서를 디스크에 반영하지 못했습니다"))?;
+
+    read_document(root.to_string_lossy().to_string(), relative)
+}
+
+#[tauri::command]
 pub fn read_document(root_path: String, relative_path: String) -> Result<DocumentSnapshot, String> {
     let root = canonical_directory(&root_path)?;
     let path = existing_workspace_file(&root, &relative_path)?;
@@ -549,6 +581,25 @@ fn normalize_relative(value: &str) -> Result<String, String> {
     Ok(path.to_string_lossy().replace('\\', "/"))
 }
 
+fn markdown_relative_path(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("파일 이름을 입력하세요.".into());
+    }
+    let mut relative = normalize_relative(trimmed)?;
+    if relative
+        .split('/')
+        .any(|part| part.is_empty() || part.starts_with('.'))
+    {
+        return Err("워크스페이스 안의 올바른 파일 이름을 입력하세요.".into());
+    }
+    if Path::new(&relative).extension().is_none() {
+        relative.push_str(".md");
+    }
+    ensure_markdown(Path::new(&relative))?;
+    Ok(relative)
+}
+
 fn existing_workspace_file(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let relative = normalize_relative(relative)?;
     let path =
@@ -850,6 +901,23 @@ mod tests {
     fn rejects_parent_directory_paths() {
         assert!(normalize_relative("../secret.md").is_err());
         assert!(normalize_relative("docs/guide.md").is_ok());
+    }
+
+    #[test]
+    fn creates_a_markdown_document_without_overwriting() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().to_string_lossy().to_string();
+        let created = create_document(root.clone(), "notes/첫 글".into()).unwrap();
+        assert_eq!(created.relative_path, "notes/첫 글.md");
+        assert_eq!(created.markdown, "# 첫 글\n\n");
+        assert!(create_document(root, "notes/첫 글.md".into()).is_err());
+    }
+
+    #[test]
+    fn rejects_hidden_documents_that_the_file_tree_cannot_show() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().to_string_lossy().to_string();
+        assert!(create_document(root, ".hidden.md".into()).is_err());
     }
 
     #[test]

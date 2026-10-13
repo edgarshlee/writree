@@ -23,6 +23,10 @@ export class TauriBridge implements DesktopBridge {
     return invoke<WorkspaceSnapshot>('open_workspace', { rootPath })
   }
 
+  createDocument(rootPath: string, relativePath: string) {
+    return invoke<DocumentSnapshot>('create_document', { rootPath, relativePath })
+  }
+
   readDocument(rootPath: string, relativePath: string) {
     return invoke<DocumentSnapshot>('read_document', { rootPath, relativePath })
   }

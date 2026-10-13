@@ -30,4 +30,12 @@ describe('BrowserBridge safe save behavior', () => {
     expect(path).toMatch(/^notes\/draft\.conflict-\d+-laptop-a\.md$/)
     expect((await bridge.openWorkspace('Writree Demo')).files).not.toHaveLength(0)
   })
+
+  it('creates a Markdown document and refuses to overwrite it', async () => {
+    const bridge = new BrowserBridge()
+    const created = await bridge.createDocument('Writree Demo', 'notes/새 글')
+    expect(created.relativePath).toBe('notes/새 글.md')
+    expect(created.markdown).toBe('# 새 글\n\n')
+    await expect(bridge.createDocument('Writree Demo', 'notes/새 글.md')).rejects.toThrow('이미 있습니다')
+  })
 })

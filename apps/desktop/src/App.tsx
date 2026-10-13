@@ -45,6 +45,7 @@ export default function App() {
       if (event.key.toLowerCase() === 'f') { event.preventDefault(); setSearchOpen(true) }
       if (event.key.toLowerCase() === 'e') { event.preventDefault(); state.setMode(state.mode === 'source' ? 'wysiwyg' : 'source') }
       if (event.key.toLowerCase() === 'o') { event.preventDefault(); void state.chooseWorkspace() }
+      if (event.key.toLowerCase() === 'n') { event.preventDefault(); void state.createDocument() }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -77,7 +78,7 @@ export default function App() {
 
       <main className="workspace-layout">
         <aside className="sidebar left-sidebar">
-          <div className="sidebar-title"><span>WORKSPACE</span><button className="icon-button small" title="새 파일은 현재 v0.1에서 파일 시스템에서 생성합니다"><FilePlus2 size={14} /></button></div>
+          <div className="sidebar-title"><span>WORKSPACE</span><button className="icon-button small" onClick={() => void state.createDocument()} title="새 Markdown 파일 (Ctrl+N)" aria-label="새 Markdown 파일"><FilePlus2 size={14} /></button></div>
           {state.workspace ? <FileTree nodes={state.workspace.files} activePath={state.activePath} gitEntries={state.git?.entries ?? []} onOpen={(path) => void state.openDocument(path)} /> : <Welcome onOpen={() => void state.chooseWorkspace()} />}
         </aside>
 

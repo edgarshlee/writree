@@ -71,6 +71,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             commands::open_workspace,
+            commands::create_document,
             commands::read_document,
             commands::save_document,
             commands::save_image,

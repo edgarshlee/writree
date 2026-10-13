@@ -68,6 +68,22 @@ export class BrowserBridge implements DesktopBridge {
     }
   }
 
+  async createDocument(_rootPath: string, relativePath: string): Promise<DocumentSnapshot> {
+    const path = normalizeMarkdownPath(relativePath)
+    if (browserPaths.has(path)) throw new Error('같은 이름의 파일이 이미 있습니다.')
+    const title = path.split('/').pop()?.replace(/\.(md|markdown)$/i, '') || '새 문서'
+    const markdown = `# ${title}\n\n`
+    browserPaths.add(path)
+    setDocument(path, markdown)
+    return {
+      relativePath: path,
+      markdown,
+      contentHash: await hash(markdown),
+      modifiedAt: Date.now(),
+      lineEnding: 'lf',
+    }
+  }
+
   async readDocument(_rootPath: string, relativePath: string): Promise<DocumentSnapshot> {
     const raw = getDocument(relativePath)
     const markdown = normalizeLineEndings(raw)
@@ -152,4 +168,13 @@ export class BrowserBridge implements DesktopBridge {
   async gitPush() {
     return 'Demo branch pushed to origin/main'
   }
+}
+
+function normalizeMarkdownPath(value: string) {
+  let path = value.trim().replace(/\\/g, '/').replace(/^\.\//, '')
+  if (!path || path.startsWith('/') || path.split('/').some((part) => !part || part === '..' || part.startsWith('.'))) {
+    throw new Error('워크스페이스 안의 올바른 파일 이름을 입력하세요.')
+  }
+  if (!/\.(md|markdown)$/i.test(path)) path += '.md'
+  return path
 }
