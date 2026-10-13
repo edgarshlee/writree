@@ -53,6 +53,12 @@ describe('Markdown text invariants', () => {
     expect(requiresSourceMode('```html\n<details>\n```')).toBe(false)
   })
 
+  it('allows Milkdown-supported br tags in visual editing mode', () => {
+    expect(requiresSourceMode('* <br />')).toBe(false)
+    expect(requiresSourceMode('first<br>second')).toBe(false)
+    expect(requiresSourceMode('<br/>\n<div>unsupported</div>')).toBe(true)
+  })
+
   it('writes portable image paths relative to nested documents', () => {
     expect(relativeAssetPath('docs/guides/start.md', 'assets/diagram.png')).toBe('../../assets/diagram.png')
     expect(resolveWorkspaceRelative('docs/guides/start.md', '../../assets/diagram.png')).toBe('assets/diagram.png')

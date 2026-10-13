@@ -32,7 +32,12 @@ export function requiresSourceMode(markdown: string) {
       fenced = !fenced
       continue
     }
-    if (!fenced && (/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^>]*)?>/.test(line) || /^\s*\$\$/.test(line))) return true
+    if (!fenced) {
+      // Milkdown CommonMark handles <br>, <br/>, and <br /> as empty-line or
+      // hard-break placeholders, so they are safe in the visual editor.
+      const withoutSupportedBreaks = line.replace(/<br\s*\/?\s*>/gi, '')
+      if (/<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^>]*)?>/.test(withoutSupportedBreaks) || /^\s*\$\$/.test(line)) return true
+    }
   }
   return false
 }

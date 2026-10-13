@@ -25,13 +25,15 @@ export function MilkdownEditor({ value, documentKey, onChange, onImage, onResolv
 
   useEffect(() => {
     if (!host.current) return
+    const hostElement = host.current
+    let disposed = false
     emittedValue.current = value
     const initial = splitFrontmatter(value)
     frontmatterRef.current = initial.frontmatter
     bodyValueRef.current = initial.body
     const editor = Editor.make()
       .config((ctx) => {
-        ctx.set(rootCtx, host.current!)
+        ctx.set(rootCtx, hostElement)
         ctx.set(defaultValueCtx, initial.body)
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, previous) => {
           if (markdown !== previous) {
@@ -52,7 +54,7 @@ export function MilkdownEditor({ value, documentKey, onChange, onImage, onResolv
 
     const hydrated = new WeakSet<HTMLImageElement>()
     const hydrateImages = () => {
-      host.current?.querySelectorAll<HTMLImageElement>('img[src]').forEach((image) => {
+      hostElement.querySelectorAll<HTMLImageElement>('img[src]').forEach((image) => {
         const source = image.getAttribute('src') ?? ''
         if (hydrated.has(image) || /^(?:data:|https?:|blob:)/i.test(source)) return
         hydrated.add(image)
@@ -62,11 +64,26 @@ export function MilkdownEditor({ value, documentKey, onChange, onImage, onResolv
       })
     }
     const observer = new MutationObserver(hydrateImages)
-    observer.observe(host.current, { childList: true, subtree: true })
+    observer.observe(hostElement, { childList: true, subtree: true })
     void editor.create()
-      .then(() => { editorRef.current = editor; hydrateImages() })
-      .catch((error) => onParseErrorRef.current(`Markdown을 시각 편집기로 변환하지 못했습니다. 원문은 소스 모드에 보존됩니다: ${String(error)}`))
-    return () => { observer.disconnect(); editorRef.current = null; void editor.destroy() }
+      .then(() => {
+        if (disposed) {
+          void editor.destroy()
+          return
+        }
+        editorRef.current = editor
+        hydrateImages()
+      })
+      .catch((error) => {
+        if (!disposed) onParseErrorRef.current(`Markdown을 시각 편집기로 변환하지 못했습니다. 원문은 소스 모드에 보존됩니다: ${String(error)}`)
+      })
+    return () => {
+      disposed = true
+      observer.disconnect()
+      if (editorRef.current === editor) editorRef.current = null
+      hostElement.replaceChildren()
+      void editor.destroy()
+    }
     // Recreate only when a different tab becomes active.
   }, [documentKey])
 
