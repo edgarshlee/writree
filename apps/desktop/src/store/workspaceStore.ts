@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { bridge } from '../infra/bridge'
-import { clearRecovery, loadRecovery, rememberWorkspace } from '../infra/metadata'
+import { clearRecovery, loadRecentWorkspace, loadRecovery, rememberWorkspace } from '../infra/metadata'
 import type {
   EditorMode,
   GitSnapshot,
@@ -24,8 +24,10 @@ interface WorkspaceState {
   selectedGitPaths: string[]
   commitMessage: string
   openDemo(): Promise<void>
+  restoreRecentWorkspace(): Promise<void>
   chooseWorkspace(): Promise<void>
   createDocument(): Promise<void>
+  renameDocument(path: string): Promise<void>
   openDocument(path: string): Promise<void>
   closeDocument(path: string): void
   setActive(path: string): void
@@ -55,8 +57,7 @@ function userMessage(error: unknown) {
   return String(error)
 }
 
-async function hydrateWorkspace(snapshot: WorkspaceSnapshot, set: (partial: Partial<WorkspaceState>) => void) {
-  await rememberWorkspace(snapshot.rootPath, snapshot.name)
+function hydrateWorkspace(snapshot: WorkspaceSnapshot, set: (partial: Partial<WorkspaceState>) => void) {
   set({
     workspace: snapshot,
     documents: {},
@@ -67,6 +68,9 @@ async function hydrateWorkspace(snapshot: WorkspaceSnapshot, set: (partial: Part
     selectedGitPaths: [],
     message: `${snapshot.name} 워크스페이스를 열었습니다.`,
   })
+  // The tree should become usable immediately. Persisting recent-workspace
+  // metadata is non-critical and can finish after the first paint.
+  void rememberWorkspace(snapshot.rootPath, snapshot.name).catch((error) => console.warn('최근 워크스페이스 저장 실패', error))
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
@@ -88,12 +92,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ loading: true })
     try {
       const snapshot = await bridge.openWorkspace('Writree Demo')
-      await hydrateWorkspace(snapshot, set)
+      hydrateWorkspace(snapshot, set)
+      set({ loading: false })
       const first = findFirstMarkdown(snapshot.files)
       if (first) await get().openDocument(first)
-      await get().refreshGit()
+      void get().refreshGit()
     } catch (error) {
       set({ message: userMessage(error) })
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  async restoreRecentWorkspace() {
+    if (get().workspace || get().loading) return
+    set({ loading: true })
+    try {
+      const recent = await loadRecentWorkspace()
+      if (!recent) return
+      const snapshot = await bridge.openWorkspace(recent.rootPath)
+      hydrateWorkspace(snapshot, set)
+      set({ loading: false })
+      const first = findFirstMarkdown(snapshot.files)
+      if (first) await get().openDocument(first)
+      void get().refreshGit()
+    } catch (error) {
+      set({ message: `최근 워크스페이스를 다시 열지 못했습니다: ${userMessage(error)}` })
     } finally {
       set({ loading: false })
     }
@@ -104,10 +128,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       const snapshot = await bridge.chooseWorkspace()
       if (!snapshot) return
-      await hydrateWorkspace(snapshot, set)
+      hydrateWorkspace(snapshot, set)
+      set({ loading: false })
       const first = findFirstMarkdown(snapshot.files)
       if (first) await get().openDocument(first)
-      await get().refreshGit()
+      void get().refreshGit()
     } catch (error) {
       set({ message: userMessage(error) })
     } finally {
@@ -155,6 +180,64 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
+  async renameDocument(path) {
+    const state = get()
+    if (!state.workspace) return
+    const opened = state.documents[path]
+    if (opened && opened.saveState !== 'saved') {
+      set({ message: '문서 저장이 완료된 후 이름을 변경해 주세요.' })
+      return
+    }
+    const currentName = titleFromPath(path)
+    const input = window.prompt('새 Markdown 파일 이름을 입력하세요.', currentName)
+    if (input === null) return
+    const newName = input.trim()
+    if (!newName) {
+      set({ message: '파일 이름을 입력하세요.' })
+      return
+    }
+    if (/[\\/]/.test(newName)) {
+      set({ message: '파일 이름에는 슬래시를 사용할 수 없습니다.' })
+      return
+    }
+    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''
+    const requestedPath = `${parent}${newName}`
+    set({ loading: true })
+    try {
+      const renamed = await bridge.renameDocument(state.workspace.rootPath, path, requestedPath)
+      const nextPath = renamed.relativePath
+      const workspace = await bridge.openWorkspace(state.workspace.rootPath)
+      await clearRecovery(state.workspace.rootPath, path)
+      set((current) => {
+        const documents = { ...current.documents }
+        const previous = documents[path]
+        delete documents[path]
+        if (previous) {
+          documents[nextPath] = {
+            ...renamed,
+            title: titleFromPath(nextPath),
+            savedMarkdown: renamed.markdown,
+            saveState: 'saved',
+          }
+        }
+        return {
+          workspace,
+          documents,
+          tabs: current.tabs.map((tab) => tab === path ? nextPath : tab),
+          activePath: current.activePath === path ? nextPath : current.activePath,
+          selectedGitPaths: current.selectedGitPaths.filter((selected) => selected !== path),
+          gitDiff: '',
+          message: `${path}의 이름을 ${nextPath}(으)로 변경했습니다.`,
+        }
+      })
+      await get().refreshGit()
+    } catch (error) {
+      set({ message: userMessage(error) })
+    } finally {
+      set({ loading: false })
+    }
+  },
+
   async openDocument(path) {
     const state = get()
     if (!state.workspace) return
@@ -162,7 +245,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({ activePath: path })
       return
     }
-    set({ loading: true })
     try {
       const snapshot = await bridge.readDocument(state.workspace.rootPath, path)
       const recovery = await loadRecovery(state.workspace.rootPath, path)
@@ -183,8 +265,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }))
     } catch (error) {
       set({ message: userMessage(error) })
-    } finally {
-      set({ loading: false })
     }
   },
 

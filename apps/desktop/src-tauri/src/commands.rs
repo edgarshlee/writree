@@ -104,9 +104,11 @@ pub struct GitCommitResult {
 pub fn open_workspace(root_path: String) -> Result<WorkspaceSnapshot, String> {
     let root = canonical_directory(&root_path)?;
     let files = read_tree(&root, &root, 0)?;
-    let git_repository = git_output(&root, &["rev-parse", "--is-inside-work-tree"])
-        .map(|output| output.status.success())
-        .unwrap_or(false);
+    // Avoid spawning Git on the critical path. A normal repository or linked
+    // worktree exposes a .git directory/file in this folder or an ancestor.
+    let git_repository = root
+        .ancestors()
+        .any(|directory| directory.join(".git").exists());
     Ok(WorkspaceSnapshot {
         name: root
             .file_name()
@@ -149,6 +151,30 @@ pub fn create_document(
         .map_err(io_error("새 문서를 디스크에 반영하지 못했습니다"))?;
 
     read_document(root.to_string_lossy().to_string(), relative)
+}
+
+#[tauri::command]
+pub fn rename_document(
+    root_path: String,
+    relative_path: String,
+    new_relative_path: String,
+) -> Result<DocumentSnapshot, String> {
+    let root = canonical_directory(&root_path)?;
+    let source_relative = markdown_relative_path(&relative_path)?;
+    let destination_relative = markdown_relative_path(&new_relative_path)?;
+    let source = existing_workspace_file(&root, &source_relative)?;
+    ensure_markdown(&source)?;
+
+    if source_relative == destination_relative {
+        return read_document(root.to_string_lossy().to_string(), source_relative);
+    }
+
+    let destination = workspace_destination(&root, &destination_relative)?;
+    if destination.exists() {
+        return Err("같은 이름의 파일이 이미 있습니다.".into());
+    }
+    fs::rename(&source, &destination).map_err(io_error("파일 이름을 변경하지 못했습니다"))?;
+    read_document(root.to_string_lossy().to_string(), destination_relative)
 }
 
 #[tauri::command]
@@ -921,6 +947,20 @@ mod tests {
     }
 
     #[test]
+    fn renames_a_markdown_document_without_overwriting() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().to_string_lossy().to_string();
+        fs::write(directory.path().join("before.md"), "# 내용\n").unwrap();
+        fs::write(directory.path().join("existing.md"), "# 기존\n").unwrap();
+
+        let renamed = rename_document(root.clone(), "before.md".into(), "after".into()).unwrap();
+        assert_eq!(renamed.relative_path, "after.md");
+        assert_eq!(renamed.markdown, "# 내용\n");
+        assert!(!directory.path().join("before.md").exists());
+        assert!(rename_document(root, "after.md".into(), "existing.md".into()).is_err());
+    }
+
+    #[test]
     fn sanitizes_image_file_names() {
         assert_eq!(
             sanitize_file_name("My Screenshot (1).PNG"),
@@ -988,6 +1028,30 @@ mod tests {
         eprintln!("opened {} bytes in {:?}", snapshot.markdown.len(), elapsed);
         assert!(snapshot.markdown.len() >= 1_000_000);
         assert!(elapsed < std::time::Duration::from_secs(3));
+    }
+
+    #[test]
+    fn opens_a_large_workspace_tree_under_the_target() {
+        let directory = tempdir().unwrap();
+        for folder_index in 0..10 {
+            let folder = directory.path().join(format!("docs-{folder_index}"));
+            fs::create_dir(&folder).unwrap();
+            for file_index in 0..50 {
+                fs::write(folder.join(format!("note-{file_index}.md")), "# note\n").unwrap();
+            }
+        }
+        let ignored = directory.path().join("node_modules");
+        fs::create_dir(&ignored).unwrap();
+        for file_index in 0..200 {
+            fs::write(ignored.join(format!("package-{file_index}.md")), "ignored").unwrap();
+        }
+
+        let started = std::time::Instant::now();
+        let snapshot = open_workspace(directory.path().to_string_lossy().to_string()).unwrap();
+        let elapsed = started.elapsed();
+        eprintln!("opened 500 visible documents in {:?}", elapsed);
+        assert_eq!(snapshot.files.len(), 10);
+        assert!(elapsed < std::time::Duration::from_secs(1));
     }
 
     fn run_git(root: &Path, args: &[&str]) {

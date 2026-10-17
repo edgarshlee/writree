@@ -38,4 +38,12 @@ describe('BrowserBridge safe save behavior', () => {
     expect(created.markdown).toBe('# 새 글\n\n')
     await expect(bridge.createDocument('Writree Demo', 'notes/새 글.md')).rejects.toThrow('이미 있습니다')
   })
+
+  it('renames a Markdown document without overwriting another file', async () => {
+    const bridge = new BrowserBridge()
+    const renamed = await bridge.renameDocument('Writree Demo', 'README.md', '소개')
+    expect(renamed.relativePath).toBe('소개.md')
+    await expect(bridge.readDocument('Writree Demo', 'README.md')).rejects.toThrow()
+    await expect(bridge.renameDocument('Writree Demo', '소개.md', 'docs/architecture.md')).rejects.toThrow('이미 있습니다')
+  })
 })

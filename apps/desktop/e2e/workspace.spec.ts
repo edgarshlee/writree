@@ -26,7 +26,7 @@ test('switches a document containing a br tag to visual editing mode', async ({ 
     localStorage.setItem('writree.demo.README.md', '# 줄바꿈 확인\n\n* 테스트\n* <br />\n')
   })
   await page.goto('/')
-  await page.getByRole('button', { name: /README\.md/ }).click()
+  await page.locator('.tree-row.file').filter({ hasText: 'README.md' }).click()
   await expect(page.getByRole('heading', { name: '줄바꿈 확인' })).toBeVisible()
   await page.getByRole('button', { name: '소스' }).click()
   await expect(page.locator('.cm-editor')).toBeVisible()
@@ -34,4 +34,13 @@ test('switches a document containing a br tag to visual editing mode', async ({ 
   await expect(page.getByTestId('wysiwyg-editor')).toBeVisible()
   await expect(page.getByRole('heading', { name: '줄바꿈 확인' })).toBeVisible()
   await expect(page.getByTestId('wysiwyg-editor').locator('.ProseMirror')).toHaveCount(1)
+})
+
+test('renames an open Markdown file from the workspace tree', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.tree-row.file').filter({ hasText: 'README.md' }).click()
+  page.once('dialog', async (dialog) => dialog.accept('소개.md'))
+  await page.getByRole('button', { name: '파일명 변경: README.md' }).click()
+  await expect(page.getByRole('button', { name: '소개.md', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /소개\.md/ })).toBeVisible()
 })

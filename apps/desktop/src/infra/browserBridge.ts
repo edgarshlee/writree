@@ -20,8 +20,6 @@ const defaultDocuments: Record<string, string> = {
   'notes/todo.md': '# Todo\n\n- [ ] Write documentation\n- [ ] Review the diff\n- [ ] Commit intentionally\n',
 }
 
-const browserPaths = new Set(Object.keys(defaultDocuments))
-
 function getDocument(path: string) {
   return localStorage.getItem(`${STORAGE_PREFIX}${path}`) ?? defaultDocuments[path] ?? ''
 }
@@ -55,6 +53,8 @@ function nodesFromPaths(paths: string[]): FileNode[] {
 }
 
 export class BrowserBridge implements DesktopBridge {
+  private readonly paths = new Set(Object.keys(defaultDocuments))
+
   async chooseWorkspace() {
     return this.openWorkspace(DEMO_ROOT)
   }
@@ -63,17 +63,17 @@ export class BrowserBridge implements DesktopBridge {
     return {
       rootPath,
       name: rootPath.split(/[\\/]/).pop() || DEMO_ROOT,
-      files: nodesFromPaths([...browserPaths]),
+      files: nodesFromPaths([...this.paths]),
       gitRepository: true,
     }
   }
 
   async createDocument(_rootPath: string, relativePath: string): Promise<DocumentSnapshot> {
     const path = normalizeMarkdownPath(relativePath)
-    if (browserPaths.has(path)) throw new Error('같은 이름의 파일이 이미 있습니다.')
+    if (this.paths.has(path)) throw new Error('같은 이름의 파일이 이미 있습니다.')
     const title = path.split('/').pop()?.replace(/\.(md|markdown)$/i, '') || '새 문서'
     const markdown = `# ${title}\n\n`
-    browserPaths.add(path)
+    this.paths.add(path)
     setDocument(path, markdown)
     return {
       relativePath: path,
@@ -84,7 +84,26 @@ export class BrowserBridge implements DesktopBridge {
     }
   }
 
+  async renameDocument(_rootPath: string, relativePath: string, newRelativePath: string): Promise<DocumentSnapshot> {
+    const path = normalizeMarkdownPath(newRelativePath)
+    if (!this.paths.has(relativePath)) throw new Error('이름을 변경할 파일을 찾지 못했습니다.')
+    if (path !== relativePath && this.paths.has(path)) throw new Error('같은 이름의 파일이 이미 있습니다.')
+    const markdown = getDocument(relativePath)
+    this.paths.delete(relativePath)
+    this.paths.add(path)
+    localStorage.removeItem(`${STORAGE_PREFIX}${relativePath}`)
+    setDocument(path, markdown)
+    return {
+      relativePath: path,
+      markdown,
+      contentHash: await hash(markdown),
+      modifiedAt: Date.now(),
+      lineEnding: detectLineEnding(markdown),
+    }
+  }
+
   async readDocument(_rootPath: string, relativePath: string): Promise<DocumentSnapshot> {
+    if (!this.paths.has(relativePath)) throw new Error('파일을 찾지 못했습니다.')
     const raw = getDocument(relativePath)
     const markdown = normalizeLineEndings(raw)
     return {
@@ -115,7 +134,7 @@ export class BrowserBridge implements DesktopBridge {
   }
 
   async applySyncDocument(request: ApplySyncDocumentRequest): Promise<SaveDocumentResult | null> {
-    const exists = browserPaths.has(request.relativePath)
+    const exists = this.paths.has(request.relativePath)
     if (exists) {
       const currentHash = await hash(getDocument(request.relativePath))
       if (!request.expectedFileHash || currentHash !== request.expectedFileHash) {
@@ -125,12 +144,12 @@ export class BrowserBridge implements DesktopBridge {
       throw new Error('SYNC_CONFLICT: 기준 파일이 없습니다.')
     }
     if (request.deleted) {
-      browserPaths.delete(request.relativePath)
+      this.paths.delete(request.relativePath)
       localStorage.removeItem(`${STORAGE_PREFIX}${request.relativePath}`)
       return null
     }
     const markdown = request.markdown ?? ''
-    browserPaths.add(request.relativePath)
+    this.paths.add(request.relativePath)
     setDocument(request.relativePath, markdown)
     return { contentHash: await hash(markdown), modifiedAt: Date.now() }
   }
@@ -141,7 +160,7 @@ export class BrowserBridge implements DesktopBridge {
     const extension = dot > -1 ? relativePath.slice(dot) : '.md'
     const suffix = deviceName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'remote'
     const path = `${stem}.conflict-${Date.now()}-${suffix}${extension}`
-    browserPaths.add(path)
+    this.paths.add(path)
     setDocument(path, markdown)
     return path
   }

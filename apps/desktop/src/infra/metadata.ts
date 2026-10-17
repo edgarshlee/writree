@@ -3,6 +3,7 @@ import { isTauri } from './bridge'
 import type { LocalSyncState, SyncedDocumentState } from '../core/types'
 
 let databasePromise: Promise<Database> | null = null
+const recentWorkspaceKey = 'writree.recentWorkspace'
 
 function database() {
   databasePromise ??= Database.load('sqlite:writree.db')
@@ -10,10 +11,8 @@ function database() {
 }
 
 export async function rememberWorkspace(rootPath: string, name: string) {
-  if (!isTauri) {
-    localStorage.setItem('writree.recentWorkspace', JSON.stringify({ rootPath, name }))
-    return
-  }
+  localStorage.setItem(recentWorkspaceKey, JSON.stringify({ rootPath, name }))
+  if (!isTauri) return
   const db = await database()
   await db.execute(
     `INSERT INTO recent_workspaces(path, name, opened_at)
@@ -21,6 +20,28 @@ export async function rememberWorkspace(rootPath: string, name: string) {
      ON CONFLICT(path) DO UPDATE SET name = excluded.name, opened_at = CURRENT_TIMESTAMP`,
     [rootPath, name],
   )
+}
+
+export async function loadRecentWorkspace(): Promise<{ rootPath: string; name: string } | null> {
+  const stored = localStorage.getItem(recentWorkspaceKey)
+  if (stored) {
+    try {
+      return JSON.parse(stored) as { rootPath: string; name: string }
+    } catch {
+      localStorage.removeItem(recentWorkspaceKey)
+    }
+  }
+  if (!isTauri) return null
+  const db = await database()
+  const rows = await db.select<Array<{ rootPath: string; name: string }>>(
+    `SELECT path AS rootPath, name
+     FROM recent_workspaces
+     ORDER BY opened_at DESC
+     LIMIT 1`,
+  )
+  const recent = rows[0] ?? null
+  if (recent) localStorage.setItem(recentWorkspaceKey, JSON.stringify(recent))
+  return recent
 }
 
 export async function saveRecovery(rootPath: string, relativePath: string, markdown: string) {

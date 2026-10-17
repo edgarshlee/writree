@@ -27,6 +27,10 @@ export class TauriBridge implements DesktopBridge {
     return invoke<DocumentSnapshot>('create_document', { rootPath, relativePath })
   }
 
+  renameDocument(rootPath: string, relativePath: string, newRelativePath: string) {
+    return invoke<DocumentSnapshot>('rename_document', { rootPath, relativePath, newRelativePath })
+  }
+
   readDocument(rootPath: string, relativePath: string) {
     return invoke<DocumentSnapshot>('read_document', { rootPath, relativePath })
   }

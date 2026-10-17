@@ -14,6 +14,7 @@ export interface FilePort {
   chooseWorkspace(): Promise<WorkspaceSnapshot | null>
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>
   createDocument(rootPath: string, relativePath: string): Promise<DocumentSnapshot>
+  renameDocument(rootPath: string, relativePath: string, newRelativePath: string): Promise<DocumentSnapshot>
   readDocument(rootPath: string, relativePath: string): Promise<DocumentSnapshot>
   saveDocument(request: SaveDocumentRequest): Promise<SaveDocumentResult>
   saveImage(rootPath: string, fileName: string, bytes: number[]): Promise<string>

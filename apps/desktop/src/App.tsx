@@ -26,7 +26,8 @@ export default function App() {
   useAutosave()
 
   useEffect(() => {
-    if (!isTauri) void state.openDemo()
+    if (isTauri) void state.restoreRecentWorkspace()
+    else void state.openDemo()
     void sync.initialize()
   }, [])
 
@@ -46,6 +47,7 @@ export default function App() {
       if (event.key.toLowerCase() === 'e') { event.preventDefault(); state.setMode(state.mode === 'source' ? 'wysiwyg' : 'source') }
       if (event.key.toLowerCase() === 'o') { event.preventDefault(); void state.chooseWorkspace() }
       if (event.key.toLowerCase() === 'n') { event.preventDefault(); void state.createDocument() }
+      if (event.key === 'F2' && state.activePath) { event.preventDefault(); void state.renameDocument(state.activePath) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -79,7 +81,7 @@ export default function App() {
       <main className="workspace-layout">
         <aside className="sidebar left-sidebar">
           <div className="sidebar-title"><span>WORKSPACE</span><button className="icon-button small" onClick={() => void state.createDocument()} title="새 Markdown 파일 (Ctrl+N)" aria-label="새 Markdown 파일"><FilePlus2 size={14} /></button></div>
-          {state.workspace ? <FileTree nodes={state.workspace.files} activePath={state.activePath} gitEntries={state.git?.entries ?? []} onOpen={(path) => void state.openDocument(path)} /> : <Welcome onOpen={() => void state.chooseWorkspace()} />}
+          {state.workspace ? <FileTree nodes={state.workspace.files} activePath={state.activePath} gitEntries={state.git?.entries ?? []} onOpen={(path) => void state.openDocument(path)} onRename={(path) => void state.renameDocument(path)} /> : <Welcome onOpen={() => void state.chooseWorkspace()} />}
         </aside>
 
         <section className="editor-shell">
